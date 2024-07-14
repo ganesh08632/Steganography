@@ -1,59 +1,75 @@
-import cv2
-import hashlib
-import os
-d = {chr(i): i for i in range(255)}
-c = {i: chr(i) for i in range(255)}
+from PIL import Image
 
-# Reading the image
-x = cv2.imread(r"/content/image1.png")
-i, j, k = x.shape
-print(i, j, k)
+def encode_image(image_path, output_path, message):
+    img = Image.open(image_path)
+    encoded = img.copy()
+    width, height = img.size
+    index = 0
 
-# Input security key and text to hide
-key = input("\nEnter key to edit (Security Key): ")
-text = input("\nEnter text to hide:")
+    # Convert message to binary
+    binary_message = ''.join([format(ord(i), "08b") for i in message])
+    binary_message += '1111111111111110'  # End of message delimiter
 
-# Initialize variables
-k1 = 0
-n, m, z = 0, 0, 0
-l = len(text)
+    # Create an iterator for the pixels
+    pixels = encoded.load()
 
-# Encode text into the image
-for i in range(l):
-    x[n, m, z] = d[text[i]] ^ d[key[k1]]
-    z = (z + 1) % 3
-    if z == 0:
-        m = (m + 1) % j
-        if m == 0:
-            n = (n + 1) % i
-    k1 = (k1 + 1) % len(key)
+    for row in range(height):
+        for col in range(width):
+            if index < len(binary_message):
+                r, g, b, *rest = pixels[col, row]
+                r = (r & ~1) | int(binary_message[index])
+                index += 1
+                if index < len(binary_message):
+                    g = (g & ~1) | int(binary_message[index])
+                    index += 1
+                if index < len(binary_message):
+                    b = (b & ~1) | int(binary_message[index])
+                    index += 1
 
-# Save the encrypted image
-cv2.imwrite("encrypted_img.jpg", x)
-# Use the xdg-open command to open the image on Linux
-!xdg-open encrypted_img.jpg 
-print("Data Hiding in Image completed successfully.")
+                # Handle alpha channel if present
+                if rest:
+                    pixels[col, row] = (r, g, b, *rest)
+                else:
+                    pixels[col, row] = (r, g, b)
+            else:
+                break
 
-# Initialize variables for decoding
-k1 = 0
-n, m, z = 0, 0, 0
+    encoded.save(output_path)
+    print(f"Message encoded and saved to {output_path}")
 
-# Prompt to unhide text
-ch = int(input("\nEnter 1 To Unhide The Text: "))
-if ch == 1:
-    key1 = input("\nEnter Secret key To Unhide The Text: ")
-    decrypt = ""
-    if key == key1:
-        for i in range(l):
-            decrypt += c[x[n, m, z] ^ d[key[k1]]]
-            z = (z + 1) % 3
-            if z == 0:
-                m = (m + 1) % j
-                if m == 0:
-                    n = (n + 1) % i
-            k1 = (k1 + 1) % len(key)
-        print("The Secret Message is:", decrypt)
-    else:
-        print("Check your key!!!!")
-else:
-    print("Don't Want To Unhide The Text, Ok Then Bye!!!!")
+def decode_image(image_path):
+    img = Image.open(image_path)
+    binary_message = ''
+    pixels = img.load()
+    width, height = img.size
+
+    for row in range(height):
+        for col in range(width):
+            r, g, b, *rest = pixels[col, row]
+            binary_message += str(r & 1)
+            binary_message += str(g & 1)
+            binary_message += str(b & 1)
+
+    # Split by 8-bits
+    all_bytes = [binary_message[i: i + 8] for i in range(0, len(binary_message), 8)]
+
+    # Convert from bits to characters
+    decoded_message = ''
+    for byte in all_bytes:
+        if byte == '11111110':  # End of message delimiter
+            break
+        decoded_message += chr(int(byte, 2))
+
+    return decoded_message
+
+# User input
+image_path = input("Enter the path to the image file: ")
+output_path = input("Enter the output image file path: ")
+message = input("Enter the message to hide: ")
+
+# Encode the message
+encode_image(image_path, output_path, message)
+
+# Decode the message to verify
+decoded_message = decode_image(output_path)
+print(f"Decoded message: {decoded_message}")
